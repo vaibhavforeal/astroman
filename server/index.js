@@ -279,22 +279,36 @@ app.post("/api/chat", async (req, res) => {
   };
 
   try {
-    const upstream = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": API_KEY, // Foundry's Anthropic route uses native Anthropic auth
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify(body)
-    });
+    const headers = {
+      "content-type": "application/json",
+      "x-api-key": API_KEY, // Foundry's Anthropic route uses native Anthropic auth
+      "anthropic-version": "2023-06-01"
+    };
+
+    // Retry the request on transient upstream errors (429/500/503/529 overloaded)
+    // with exponential backoff — safe because no tokens have streamed yet.
+    let upstream = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        upstream = await fetch(ENDPOINT, { method: "POST", headers, body: JSON.stringify(body) });
+      } catch (e) {
+        if (attempt === 4) throw e;
+        await sleep(600 * 2 ** (attempt - 1));
+        continue;
+      }
+      if ((upstream.ok && upstream.body) || !RETRYABLE_STATUS.has(upstream.status) || attempt === 4) break;
+      console.warn(`chat: upstream ${upstream.status} (overloaded/transient) — retry ${attempt}/3`);
+      await sleep(600 * 2 ** (attempt - 1)); // 0.6s → 1.2s → 2.4s
+    }
 
     if (!upstream.ok || !upstream.body) {
-      const detail = (await upstream.text().catch(() => "")).slice(0, 800);
+      const detail = (await upstream.text().catch(() => "")).slice(0, 400);
       const msg =
         upstream.status === 401 || upstream.status === 403
           ? "Authentication failed — check AZURE_INFERENCE_KEY and AZURE_INFERENCE_ENDPOINT in your .env file."
-          : `Chat request failed (HTTP ${upstream.status}). ${detail}`.trim();
+          : RETRYABLE_STATUS.has(upstream.status)
+            ? "The model is busy right now (overloaded). Please wait a few seconds and try again."
+            : `Chat request failed (HTTP ${upstream.status}). ${detail}`.trim();
       send({ error: msg });
       return res.end();
     }
@@ -326,7 +340,12 @@ app.post("/api/chat", async (req, res) => {
           } else if (evt.type === "message_delta" && evt.delta && evt.delta.stop_reason === "refusal") {
             refused = true;
           } else if (evt.type === "error") {
-            send({ error: (evt.error && evt.error.message) || "Streaming error." });
+            const e = evt.error || {};
+            send({
+              error: e.type === "overloaded_error"
+                ? "The model got overloaded mid-response. Please try again."
+                : e.message || "Streaming error."
+            });
           }
         }
       }
@@ -345,6 +364,8 @@ app.post("/api/chat", async (req, res) => {
 const int = v => (v === undefined || v === null || v === "" ? null : parseInt(v, 10));
 const num = v => (v === undefined || v === null || v === "" ? null : parseFloat(v));
 const round4 = x => Math.round(Number(x) * 10000) / 10000;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 529]); // transient upstream errors
 
 // Standard-time UTC offset (hours) for an IANA timezone — the non-DST offset,
 // to match the app's "standard offset, add +1 for DST" convention.
