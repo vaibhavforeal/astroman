@@ -514,12 +514,14 @@ button {
     font-size: 18px; color: var(--on-accent); background: var(--sky);
     border-radius: var(--radius-sm); box-shadow: var(--shadow-sm);
   }
+  /* Transparent tap-catcher over the chat: no dimming, but tapping the chat
+     while the drawer is open closes the drawer. */
   .panel-scrim {
     position: fixed; inset: 0; z-index: 190; display: block;
-    background: rgba(18, 48, 73, 0.45);
-    opacity: 0; pointer-events: none; transition: opacity .25s ease;
+    background: transparent;
+    pointer-events: none;
   }
-  .app.panel-open .panel-scrim { opacity: 1; pointer-events: auto; }
+  .app.panel-open .panel-scrim { pointer-events: auto; }
 
   /* Chat gutters; keep content clear of the floating hamburger */
   .chat-scroll { padding: 60px 0 18px; }
