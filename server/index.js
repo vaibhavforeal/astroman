@@ -271,6 +271,11 @@ app.post("/api/chat", async (req, res) => {
     }
   }
 
+  // Cache the whole system prefix (skill + chart + compatibility) so a multi-turn
+  // conversation only pays full input price for it on the first message; later
+  // turns read it at ~10% cost. (The skill block above is a separate breakpoint.)
+  system[system.length - 1].cache_control = { type: "ephemeral" };
+
   const body = {
     model: MODEL,
     max_tokens: 2000, // cap output to keep replies focused and cheaper
