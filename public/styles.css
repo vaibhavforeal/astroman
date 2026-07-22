@@ -504,8 +504,8 @@ button {
     box-shadow: 4px 0 28px rgba(20, 50, 80, 0.22);
   }
   .app.panel-open .panel { transform: translateX(0); }
-  .brand { padding: 50px 14px 12px; }   /* clear the floating hamburger */
-  .panel-scroll { padding: 12px 14px 18px; }
+  .brand { display: none; }              /* logo lives on desktop only */
+  .panel-scroll { padding: 54px 14px 18px; }   /* top clears the floating hamburger */
 
   /* Hamburger toggle + backdrop */
   .panel-toggle {
