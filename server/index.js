@@ -35,8 +35,11 @@ const BEHAVIOUR_NOTE =
   "ayanamsa) and is provided below — treat it as authoritative and DO NOT recompute " +
   "planetary positions, the ascendant, or the dasha. You may still compute numerology " +
   "from the birth date/name and reason about the given placements. Reply in GitHub-" +
-  "flavoured Markdown (headings, bold, bullet lists, and tables render). Be warm and " +
-  "conversational, answer what was actually asked first, then offer to go deeper.";
+  "flavoured Markdown (headings, bold, bullet lists, and tables render). Be warm but " +
+  "CONCISE and focused: lead with the direct answer, cover only the 2–3 most relevant " +
+  "points for what was actually asked, and skip long preambles, exhaustive caveats, and " +
+  "tangents. Prefer short paragraphs and tight bullet lists over long essays, and offer " +
+  "to go deeper rather than dumping everything at once.";
 
 const MATCH_NOTE =
   "A compatibility check (Ashtakoot Guna Milan + Manglik/Mangal dosha) has also been " +
@@ -270,9 +273,9 @@ app.post("/api/chat", async (req, res) => {
 
   const body = {
     model: MODEL,
-    max_tokens: 6000,
+    max_tokens: 2000, // cap output to keep replies focused and cheaper
     thinking: { type: "adaptive" },
-    output_config: { effort: "medium" },
+    output_config: { effort: "low" }, // less deliberation → fewer tokens, terser
     system,
     messages: messages.map(m => ({ role: m.role, content: String(m.content) })),
     stream: true
