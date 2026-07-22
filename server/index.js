@@ -12,7 +12,7 @@ const { loadSkill } = require("./skill");
 const { CITIES } = require("./cities");
 const auth = require("./auth");
 const store = require("./store");
-const { users, people } = store;
+const { users, people, conversations } = store;
 
 // --- Azure AI Foundry config -------------------------------------------------
 // Claude is served through Foundry's Anthropic-native Messages API. The chat
@@ -164,6 +164,79 @@ app.delete("/api/people/:id", async (req, res) => {
     res.json({ ok: await people.remove(req.userId, req.params.id) });
   } catch (err) {
     console.error("delete person error:", err);
+    res.status(500).json({ error: "Delete failed." });
+  }
+});
+
+// --- Saved chat conversations (per user) ------------------------------------
+// Auto-saved from the client as a chat progresses. The list is metadata-only;
+// GET /:id returns the full chart + match + messages so a chat can be resumed.
+app.get("/api/conversations", async (req, res) => {
+  try {
+    res.json({ conversations: await conversations.forUser(req.userId) });
+  } catch (err) {
+    console.error("list conversations error:", err);
+    res.status(500).json({ error: "Could not load saved chats." });
+  }
+});
+
+app.get("/api/conversations/:id", async (req, res) => {
+  try {
+    const c = await conversations.get(req.userId, req.params.id);
+    if (!c) return res.status(404).json({ error: "Chat not found." });
+    res.json({ conversation: c });
+  } catch (err) {
+    console.error("get conversation error:", err);
+    res.status(500).json({ error: "Could not load chat." });
+  }
+});
+
+app.post("/api/conversations", async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.chart || !Array.isArray(b.messages)) {
+      return res.status(400).json({ error: "Missing chat data." });
+    }
+    const now = new Date().toISOString();
+    const conv = await conversations.create({
+      id: crypto.randomUUID(),
+      userId: req.userId,
+      title: String(b.title || "Chat").trim().slice(0, 120) || "Chat",
+      chart: b.chart,
+      input: b.input || null,
+      match: b.match || null,
+      messages: b.messages,
+      createdAt: now,
+      updatedAt: now
+    });
+    res.json({ id: conv.id });
+  } catch (err) {
+    console.error("create conversation error:", err);
+    res.status(500).json({ error: "Save failed." });
+  }
+});
+
+app.patch("/api/conversations/:id", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const ok = await conversations.update(req.userId, req.params.id, {
+      messages: Array.isArray(b.messages) ? b.messages : undefined,
+      title: b.title !== undefined ? String(b.title).trim().slice(0, 120) : undefined,
+      updatedAt: new Date().toISOString()
+    });
+    if (!ok) return res.status(404).json({ error: "Chat not found." });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("update conversation error:", err);
+    res.status(500).json({ error: "Save failed." });
+  }
+});
+
+app.delete("/api/conversations/:id", async (req, res) => {
+  try {
+    res.json({ ok: await conversations.remove(req.userId, req.params.id) });
+  } catch (err) {
+    console.error("delete conversation error:", err);
     res.status(500).json({ error: "Delete failed." });
   }
 });

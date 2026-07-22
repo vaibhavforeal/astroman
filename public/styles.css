@@ -440,6 +440,10 @@ button {
 }
 .p-load small { color: var(--faint); font-weight: 400; margin-left: 4px; }
 .p-load:hover { border-color: var(--sky); background: var(--sky-soft); }
+/* The saved chat the composer is currently writing to. */
+.conv-list li.active .p-load {
+  border-color: var(--sky); background: var(--sky-soft); font-weight: 600;
+}
 .p-del {
   flex: 0 0 auto; width: 30px; font-size: 12px; color: var(--faint);
   background: var(--field); border: 1px solid var(--line); border-radius: var(--radius-sm);

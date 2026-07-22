@@ -25,5 +25,21 @@ create table if not exists public.people (
 );
 create index if not exists idx_people_user on public.people(user_id);
 
-alter table public.users  enable row level security;
-alter table public.people enable row level security;
+-- Saved chat conversations. chart/match/messages are stored as JSONB so a chat
+-- can be resumed with its full context without recomputing the chart.
+create table if not exists public.conversations (
+  id         text primary key,
+  user_id    text not null,
+  title      text not null,
+  chart      jsonb not null,
+  input      jsonb,                               -- raw birth input, to restore the form/toggles
+  match      jsonb,
+  messages   jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_conversations_user on public.conversations(user_id, updated_at desc);
+
+alter table public.users         enable row level security;
+alter table public.people        enable row level security;
+alter table public.conversations enable row level security;

@@ -31,8 +31,14 @@ const peopleList = $("peopleList");
 const peopleEmpty = $("peopleEmpty");
 const peopleErr = $("peopleErr");
 const savePersonBtn = $("savePersonBtn");
+// Saved-chats (conversations) elements
+const convCard = $("convCard");
+const convList = $("convList");
+const convEmpty = $("convEmpty");
+const newChatBtn = $("newChatBtn");
 let authMode = "login";
 let peopleById = {};
+let currentConvId = null; // the saved conversation the chat is currently writing to
 const pad = n => String(n).padStart(2, "0");
 
 // Mobile slide-in drawer for the chart / compatibility panel (no effect on desktop)
@@ -143,8 +149,10 @@ async function castChart(input, reset) {
     if (reset) {
       history.length = 0;
       match = null; // a new person → any prior compatibility result is stale
+      currentConvId = null; // a new chart starts a new saved conversation
       clearConversation();
       enableChat();
+      highlightActiveConv();
       const mr = $("matchResult");
       if (mr) { mr.hidden = true; mr.innerHTML = ""; }
     }
@@ -526,6 +534,7 @@ function renderVargaHTML(v) {
 function enableChat() {
   input.disabled = false;
   sendBtn.disabled = false;
+  if (newChatBtn) newChatBtn.disabled = false;
   input.placeholder = "Ask about your chart…";
   suggestionsEl.hidden = false;
   input.focus();
@@ -671,6 +680,7 @@ async function sendMessage(text) {
     sendBtn.disabled = false;
     if (stick) scrollDown();
     input.focus({ preventScroll: true });
+    saveConversation(); // persist this turn (best-effort, non-blocking)
   }
 }
 
@@ -690,8 +700,10 @@ function onAuthed(user) {
   account.hidden = false;
   $("accountName").textContent = user.username;
   peopleCard.hidden = false;
+  convCard.hidden = false;
   panelToggle.hidden = false; // reveal the mobile drawer toggle
   loadPeople();
+  loadConversations();
 }
 
 function applyAuthMode() {
@@ -837,5 +849,148 @@ savePersonBtn.addEventListener("click", async () => {
     savePersonBtn.textContent = label;
   }
 });
+
+// ---- Saved chats (conversations) ------------------------------------------
+// The list is metadata-only; loading one fetches its full chart + messages so
+// the consultation can be resumed exactly. Saving is automatic as you chat.
+async function loadConversations() {
+  try {
+    const res = await fetch("/api/conversations");
+    if (res.status === 401) return showAuth();
+    const data = await res.json();
+    renderConversations(data.conversations || []);
+  } catch {
+    /* leave the list as-is */
+  }
+}
+
+function fmtConvDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function renderConversations(list) {
+  convList.innerHTML = list
+    .map(
+      c => `<li data-id="${c.id}">
+        <button type="button" class="p-load conv-load">${escAttr(c.title)} <small>${fmtConvDate(c.updated_at)}</small></button>
+        <button type="button" class="p-del" title="Delete this chat">✕</button>
+      </li>`
+    )
+    .join("");
+  convEmpty.hidden = list.length > 0;
+  highlightActiveConv();
+}
+
+// Mark whichever saved chat the composer is currently writing to.
+function highlightActiveConv() {
+  if (!convList) return;
+  convList.querySelectorAll("li[data-id]").forEach(li =>
+    li.classList.toggle("active", li.dataset.id === currentConvId));
+}
+
+convList.addEventListener("click", async e => {
+  const li = e.target.closest("li[data-id]");
+  if (!li) return;
+  const id = li.dataset.id;
+  if (e.target.closest(".p-del")) {
+    try {
+      const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+      if (res.status === 401) return showAuth();
+      if (id === currentConvId) currentConvId = null; // deleted the open chat
+      await loadConversations();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (e.target.closest(".conv-load")) loadConversation(id);
+});
+
+// Render the stored history into the chat pane (user bubbles + assistant markdown).
+function renderHistory() {
+  clearConversation();
+  for (const m of history) {
+    const b = addMessage(m.role, m.content);
+    if (m.role === "assistant") renderMarkdown(b, m.content);
+  }
+}
+
+async function loadConversation(id) {
+  if (streaming) return;
+  try {
+    const res = await fetch(`/api/conversations/${id}`);
+    if (res.status === 401) return showAuth();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not load chat.");
+    const conv = data.conversation;
+
+    chart = conv.chart;
+    match = conv.match || null;
+    lastInput = conv.input || null; // restores the node toggle / save-person / match form
+    history.length = 0;
+    (conv.messages || []).forEach(m => history.push(m));
+    currentConvId = conv.id;
+
+    renderChartCard(chart);
+    if (savePersonBtn) savePersonBtn.disabled = !lastInput;
+    // Restore the compatibility panel if this chat had one (summary carries all
+    // the fields renderMatchResult needs; the charts were stripped out on save).
+    const mr = $("matchResult");
+    if (match && match.summary) renderMatchResult(match.summary);
+    else if (mr) { mr.hidden = true; mr.innerHTML = ""; }
+    renderHistory();
+    enableChat();
+    highlightActiveConv();
+    setPanelOpen(false); // on mobile, reveal the chat
+    scrollDown();
+  } catch {
+    /* transient — the sidebar item stays, user can retry */
+  }
+}
+
+// Start a fresh conversation about the current chart, keeping the chart itself.
+function newChat() {
+  if (!chart || streaming) return;
+  currentConvId = null;
+  history.length = 0;
+  clearConversation();
+  enableChat();
+  highlightActiveConv();
+  setPanelOpen(false);
+}
+if (newChatBtn) newChatBtn.addEventListener("click", newChat);
+
+// Auto-save the current chat. Creates the conversation on the first reply, then
+// patches it on every subsequent turn. Best-effort — never disrupts the chat.
+async function saveConversation() {
+  if (!chart || !history.length) return;
+  const firstUser = history.find(m => m.role === "user");
+  const base = (firstUser ? firstUser.content : "New chat").replace(/\s+/g, " ").trim();
+  const who = lastInput && lastInput.name ? lastInput.name.trim() : "";
+  const title = (who ? who + ": " : "") + base.slice(0, 60);
+  try {
+    if (!currentConvId) {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, chart, input: lastInput, match, messages: history })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.id) { currentConvId = data.id; await loadConversations(); }
+    } else {
+      const res = await fetch(`/api/conversations/${currentConvId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history })
+      });
+      if (res.status === 404) { currentConvId = null; return saveConversation(); } // was deleted → recreate
+    }
+  } catch {
+    /* saving is best-effort */
+  }
+}
 
 initAuth();
