@@ -1,0 +1,27 @@
+# Render Blueprint — deploys Astroman as a Docker web service with a persistent
+# disk for the SQLite database. Commit this file, then on render.com choose
+# New → Blueprint and point it at the repo. Fill the two secret vars when asked.
+services:
+  - type: web
+    name: astroman
+    runtime: docker
+    plan: starter            # a paid instance is required to attach a disk
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: astroman-data    # persists /data (the SQLite DB) across deploys
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: SESSION_SECRET
+        generateValue: true  # Render generates a strong secret once
+      - key: AZURE_DEPLOYMENT
+        value: claude-opus-4-8
+      - key: AZURE_INFERENCE_ENDPOINT
+        sync: false          # set in the dashboard (not committed)
+      - key: AZURE_INFERENCE_KEY
+        sync: false          # set in the dashboard (not committed)

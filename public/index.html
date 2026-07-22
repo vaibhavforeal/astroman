@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Astroman · Vedic Astrology Guide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Raleway:wght@300;400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <!-- ===== Left panel: birth details + chart ===== -->
+      <aside class="panel" id="panel">
+        <div class="brand">
+          <div class="brand-mark">✦</div>
+          <div>
+            <h1>Astroman</h1>
+            <p class="tag">Jyotish &amp; numerology guide</p>
+          </div>
+        </div>
+
+        <div class="account" id="account" hidden>
+          <span class="account-user">Signed in as <b id="accountName"></b></span>
+          <button type="button" id="logoutBtn" class="logout">Log out</button>
+        </div>
+
+        <form id="birthForm" class="birth-form">
+          <h2>Birth details</h2>
+
+          <label>Name (optional)
+            <input type="text" id="name" maxlength="80" placeholder="e.g. Vaibhav" autocomplete="off" />
+            <small>Used for name numerology and saved charts.</small>
+          </label>
+
+          <label>Date of birth
+            <input type="date" id="dob" required />
+          </label>
+
+          <label>Time of birth
+            <input type="time" id="tob" step="60" required />
+            <small>Local time at the birthplace. Unknown? Use 12:00 &amp; note it.</small>
+          </label>
+
+          <label>Place (type to search)
+            <input list="cityList" id="city" placeholder="Type a city name…" autocomplete="off" />
+            <datalist id="cityList"></datalist>
+            <small>Pick a match to auto-fill latitude, longitude &amp; UTC offset.</small>
+          </label>
+
+          <div class="row">
+            <label>Latitude
+              <input type="number" id="lat" step="0.0001" placeholder="e.g. 28.6139" required />
+            </label>
+            <label>Longitude
+              <input type="number" id="lon" step="0.0001" placeholder="e.g. 77.2090" required />
+            </label>
+          </div>
+
+          <label>UTC offset (hours)
+            <input type="number" id="tz" step="0.25" placeholder="e.g. 5.5" required />
+            <small>Standard time offset. Add +1 if born during daylight saving.</small>
+          </label>
+
+          <button type="submit" id="computeBtn">Cast chart</button>
+          <p class="err" id="formErr" hidden></p>
+        </form>
+
+        <div id="peopleCard" class="people-card" hidden>
+          <div class="aspects-title">Saved people
+            <button type="button" id="savePersonBtn" class="save-person" disabled title="Save the current birth details">★ Save current</button>
+          </div>
+          <ul id="peopleList" class="people-list"></ul>
+          <div class="people-empty" id="peopleEmpty">No saved charts yet — cast one, then “Save current”.</div>
+          <p class="err" id="peopleErr" hidden></p>
+        </div>
+
+        <div id="chartCard" class="chart-card" hidden></div>
+
+        <!-- ===== Guna Milan (Ashtakoot compatibility) ===== -->
+        <div id="matchCard" class="match-card" hidden>
+          <h3>Guna Milan · compatibility</h3>
+          <form id="matchForm" class="match-form">
+            <div class="role-toggle">
+              <span>Your chart is the</span>
+              <label><input type="radio" name="primaryRole" value="groom" checked /> groom ♂</label>
+              <label><input type="radio" name="primaryRole" value="bride" /> bride ♀</label>
+            </div>
+
+            <label>Partner — date of birth
+              <input type="date" id="m_dob" required />
+            </label>
+            <label>Time of birth
+              <input type="time" id="m_tob" step="60" required />
+              <small>Local time at the birthplace. Unknown? Use 12:00.</small>
+            </label>
+            <label>Place (type to search)
+              <input list="m_cityList" id="m_city" placeholder="Type a city name…" autocomplete="off" />
+              <datalist id="m_cityList"></datalist>
+            </label>
+            <div class="row">
+              <label>Latitude
+                <input type="number" id="m_lat" step="0.0001" placeholder="e.g. 19.0760" required />
+              </label>
+              <label>Longitude
+                <input type="number" id="m_lon" step="0.0001" placeholder="e.g. 72.8777" required />
+              </label>
+            </div>
+            <label>UTC offset (hours)
+              <input type="number" id="m_tz" step="0.25" placeholder="e.g. 5.5" required />
+            </label>
+
+            <button type="submit" id="matchBtn">Check compatibility</button>
+            <p class="err" id="matchErr" hidden></p>
+          </form>
+          <div id="matchResult" class="match-result" hidden></div>
+        </div>
+
+        <p class="disclaimer">
+          Guidance framework, not fixed fate. For legal, financial, or medical
+          decisions, consult a qualified professional.
+        </p>
+      </aside>
+
+      <!-- ===== Right panel: chat ===== -->
+      <main class="chat">
+        <div class="chat-scroll" id="messages">
+          <div class="welcome" id="welcome">
+            <div class="welcome-glyph">☾</div>
+            <h2>Welcome to your consultation</h2>
+            <p>
+              Cast your chart on the left, then ask me anything — your rashi and
+              nakshatra, current dasha phase, career, relationships, remedies, or
+              a name-change analysis.
+            </p>
+          </div>
+        </div>
+
+        <div class="suggestions" id="suggestions" hidden>
+          <button data-q="Give me a warm overview of my chart and what phase of life I'm in right now.">Overview</button>
+          <button data-q="What does my current Mahadasha and Antardasha mean for me right now?">Current phase</button>
+          <button data-q="What does my chart say about my career and work life?">Career</button>
+          <button data-q="What does my chart reveal about relationships and compatibility?">Relationships</button>
+          <button data-q="Are there any doshas or challenging placements I should understand — and remedies suited to me?">Doshas &amp; remedies</button>
+        </div>
+
+        <form class="composer" id="composer">
+          <textarea id="input" rows="1" placeholder="Cast your chart first, then ask…" disabled></textarea>
+          <button type="submit" id="sendBtn" disabled>Send</button>
+        </form>
+      </main>
+    </div>
+
+    <!-- ===== Auth overlay (login / register) ===== -->
+    <div id="authOverlay" class="auth-overlay">
+      <div class="auth-box">
+        <div class="brand-mark auth-mark">✦</div>
+        <h2 id="authTitle">Welcome to Astroman</h2>
+        <p class="auth-sub" id="authSub">Log in to cast and save charts.</p>
+        <form id="authForm" class="auth-form">
+          <input type="text" id="authUser" placeholder="Username" autocomplete="username" required />
+          <input type="password" id="authPass" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" id="authSubmit">Log in</button>
+          <p class="err" id="authErr" hidden></p>
+        </form>
+        <p class="auth-switch">
+          <span id="authSwitchText">New here?</span>
+          <button type="button" id="authSwitch">Create an account</button>
+        </p>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
