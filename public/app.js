@@ -195,6 +195,15 @@ const SIGN_VIBES = [
   "dreamy, intuitive, feels the unseen"         // Pisces · Meena
 ];
 
+// Gen Z headline per Guna Milan band (thresholds set server-side in
+// gunamilan.js: poor <18, average 18-24, good 25-32, excellent ≥33).
+const SHIP = {
+  excellent: { emoji: "💫", head: "written in the stars", sub: "basically soulmates" },
+  good:      { emoji: "💚", head: "green-flag energy",     sub: "strong match" },
+  average:   { emoji: "🤞", head: "worth a shot",          sub: "potential, needs effort" },
+  poor:      { emoji: "🚩", head: "the stars said pause",  sub: "proceed with caution" }
+};
+
 function renderCosmicId(c) {
   const moon = c.planets.find(p => p.key === "Moon") || {};
   const asc = c.ascendant || {};
@@ -285,12 +294,15 @@ function centerWrap(ctx, text, cx, y, maxWidth, lineHeight) {
 
 const ls = (ctx, v) => { if ("letterSpacing" in ctx) ctx.letterSpacing = v; };
 
-async function buildStoryImage(data) {
-  const W = 1080, H = 1920;
-  const canvas = document.createElement("canvas");
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext("2d");
+function canvasBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
+  });
+}
 
+// Shared 9:16 story scaffold: gradient + starfield + white logo, "Pythia"
+// wordmark, a section label and the footer. Callers draw the middle content.
+async function storyScaffold(ctx, W, H, sectionLabel) {
   const g = ctx.createLinearGradient(0, 0, W * 0.6, H);
   g.addColorStop(0, "#0b2a4a");
   g.addColorStop(0.55, "#0a3d68");
@@ -320,8 +332,22 @@ async function buildStoryImage(data) {
   ctx.fillStyle = "rgba(198,222,255,0.72)";
   ctx.font = "600 30px Raleway, sans-serif";
   ls(ctx, "4px");
-  ctx.fillText("✦  YOUR COSMIC ID  ✦", W / 2, 650);
+  ctx.fillText(sectionLabel, W / 2, 650);
   ls(ctx, "0px");
+
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.font = "500 30px Raleway, sans-serif";
+  ls(ctx, "2px");
+  ctx.fillText("cast yours at pythia", W / 2, 1840);
+  ls(ctx, "0px");
+}
+
+async function buildStoryImage(data) {
+  const W = 1080, H = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  await storyScaffold(ctx, W, H, "✦  YOUR COSMIC ID  ✦");
 
   const items = [
     ["MOON", data.moon.sign, data.moon.signSanskrit],
@@ -352,19 +378,75 @@ async function buildStoryImage(data) {
   ctx.font = "italic 500 46px Lora, Georgia, serif";
   centerWrap(ctx, "“" + data.vibe + "”", W / 2, 1600, W - 200, 62);
 
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.font = "500 30px Raleway, sans-serif";
-  ls(ctx, "2px");
-  ctx.fillText("cast yours at pythia", W / 2, 1840);
-  ls(ctx, "0px");
-
-  return await new Promise((resolve, reject) => {
-    canvas.toBlob(b => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
-  });
+  return canvasBlob(canvas);
 }
 
-async function shareCosmicId(c) {
-  const btn = $("cidShare");
+async function buildMatchStoryImage(d) {
+  const W = 1080, H = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  await storyScaffold(ctx, W, H, "✦  COMPATIBILITY  ✦");
+
+  const ship = SHIP[d.verdict.band] || SHIP.average;
+  const pct = Math.round((d.total / d.max) * 100);
+
+  ctx.font = "120px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif";
+  ctx.fillText(ship.emoji, W / 2, 900);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 150px Lora, Georgia, serif";
+  ctx.fillText(fmtScore(d.total) + " / " + d.max, W / 2, 1080);
+
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.font = "italic 600 58px Lora, Georgia, serif";
+  ctx.fillText(ship.head, W / 2, 1175);
+
+  ctx.fillStyle = "rgba(198,222,255,0.78)";
+  ctx.font = "500 32px Raleway, sans-serif";
+  ctx.fillText(d.verdict.label + "  ·  " + pct + "% matched", W / 2, 1240);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 46px Lora, Georgia, serif";
+  ctx.fillText(d.boy.nakshatra + "   ✕   " + d.girl.nakshatra, W / 2, 1420);
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  ctx.font = "400 32px Raleway, sans-serif";
+  ctx.fillText(d.boy.sign + "  ·  " + d.girl.sign, W / 2, 1470);
+
+  return canvasBlob(canvas);
+}
+
+// Web Share (with files) where supported, else download the PNG.
+async function shareOrDownload(blob, filename, title, text) {
+  const file = new File([blob], filename, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title, text });
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+}
+
+// Runs an image-builder with button busy-state + graceful cancel/error handling.
+async function runShare(btn, busyLabel, build) {
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = busyLabel; }
+  try {
+    await build();
+  } catch (e) {
+    if (!e || e.name !== "AbortError") console.error("Share failed:", e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
+function shareCosmicId(c) {
   const moon = c.planets.find(p => p.key === "Moon") || {};
   const data = {
     moon,
@@ -373,28 +455,17 @@ async function shareCosmicId(c) {
     pada: c.dasha && c.dasha.moonPada,
     vibe: SIGN_VIBES[moon.signIndex] ?? "one of one"
   };
-  const orig = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.textContent = "Creating…"; }
-  try {
+  return runShare($("cidShare"), "Creating…", async () => {
     const blob = await buildStoryImage(data);
-    const file = new File([blob], "pythia-cosmic-id.png", { type: "image/png" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "My Cosmic ID", text: "my vedic big three ✦ via Pythia" });
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "pythia-cosmic-id.png";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    }
-  } catch (e) {
-    if (!e || e.name !== "AbortError") console.error("Cosmic ID share failed:", e);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = orig || "Share your ID ✦"; }
-  }
+    await shareOrDownload(blob, "pythia-cosmic-id.png", "My Cosmic ID", "my vedic big three ✦ via Pythia");
+  });
+}
+
+function shareMatch(d) {
+  return runShare($("shipShareBtn"), "Creating…", async () => {
+    const blob = await buildMatchStoryImage(d);
+    await shareOrDownload(blob, "pythia-match.png", "Our Cosmic Match", "our cosmic compatibility ✦ via Pythia");
+  });
 }
 
 // ---- Render the chart summary card ----------------------------------------
@@ -620,6 +691,8 @@ const fmtScore = n => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 function renderMatchResult(d) {
   const band = "band-" + d.verdict.band;
   const deg = (d.total / d.max) * 360;
+  const pct = Math.round((d.total / d.max) * 100);
+  const ship = SHIP[d.verdict.band] || SHIP.average;
 
   const kutaRows = d.kutas
     .map(k => {
@@ -643,6 +716,13 @@ function renderMatchResult(d) {
   const manglikHtml = d.manglik ? renderManglik(d.manglik) : "";
 
   matchResult.innerHTML = `
+    <div class="ship-banner ${band}">
+      <span class="ship-emoji">${ship.emoji}</span>
+      <div class="ship-text">
+        <div class="ship-title">${ship.head}</div>
+        <div class="ship-sub">${fmtScore(d.total)}/${d.max} · ${pct}% matched — ${ship.sub}</div>
+      </div>
+    </div>
     <div class="score-head">
       <div class="score-ring ${band}" style="--deg:${deg}deg">
         <div class="score-inner"><b>${fmtScore(d.total)}</b><span>/${d.max}</span></div>
@@ -660,8 +740,14 @@ function renderMatchResult(d) {
     ${manglikHtml}
     ${caveats ? `<ul class="caveats">${caveats}</ul>` : ""}
     <div class="match-note">Traditional minimum for marriage is ${d.verdict.minimum} of 36 gunas. Manglik is a separate layer, not part of the 36.</div>
-    <button type="button" id="askMatchBtn" class="ask-match">Discuss this match in chat →</button>`;
+    <div class="match-actions">
+      <button type="button" id="shipShareBtn" class="ship-share">Share this match ✦</button>
+      <button type="button" id="askMatchBtn" class="ask-match">Discuss in chat →</button>
+    </div>`;
   matchResult.hidden = false;
+
+  const shipBtn = $("shipShareBtn");
+  if (shipBtn) shipBtn.addEventListener("click", () => shareMatch(d));
 
   const askBtn = $("askMatchBtn");
   if (askBtn) {
