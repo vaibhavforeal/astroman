@@ -124,6 +124,41 @@ button {
   margin-top: 16px; padding: 12px; border-radius: var(--radius);
   background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow-sm);
 }
+
+/* ---- Cosmic ID: the "big three" identity snapshot atop the chart ---- */
+.cosmic-id {
+  position: relative; overflow: hidden;
+  margin: 0 0 14px; padding: 14px 16px 13px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #0b2a4a 0%, var(--sky-deep) 55%, #3f6fd0 100%);
+  color: #fff; box-shadow: 0 3px 12px rgba(11, 42, 74, 0.22);
+}
+.cosmic-id::after {                       /* faint starfield sparkle */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(1.6px 1.6px at 84% 22%, rgba(255,255,255,.85), transparent),
+    radial-gradient(1.4px 1.4px at 72% 66%, rgba(255,255,255,.55), transparent),
+    radial-gradient(1.1px 1.1px at 92% 52%, rgba(255,255,255,.6), transparent),
+    radial-gradient(1.1px 1.1px at 63% 30%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1px 1px at 78% 82%, rgba(255,255,255,.45), transparent);
+}
+.cid-head {
+  position: relative; z-index: 1;
+  font-family: var(--font-head);
+  font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: rgba(255,255,255,.72); margin-bottom: 9px;
+}
+.cid-rows { position: relative; z-index: 1; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.cid-rows li { display: grid; grid-template-columns: 20px 58px 1fr; align-items: baseline; gap: 8px; }
+.cid-glyph { font-size: 15px; line-height: 1; color: #bcd8ff; text-align: center; }
+.cid-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.58); }
+.cid-val { font-family: var(--font-head); font-size: 17px; font-weight: 600; line-height: 1.15; }
+.cid-val small { font-family: var(--font); font-size: 11px; font-weight: 400; color: rgba(255,255,255,.62); margin-left: 6px; }
+.cid-vibe {
+  position: relative; z-index: 1; margin-top: 11px; padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.16);
+  font-style: italic; font-size: 13px; color: rgba(255,255,255,.92);
+}
 .chart-card .asc { font-size: 13px; margin-bottom: 9px; color: var(--ink); }
 .chart-card .asc b { color: var(--sky-deep); }
 .chart-card table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }

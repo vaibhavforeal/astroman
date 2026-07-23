@@ -177,6 +177,46 @@ function showFormErr(msg) {
   errEl.hidden = false;
 }
 
+// ---- Cosmic ID: the "big three" identity snapshot -------------------------
+// One short vibe per Moon rashi (signIndex 0=Aries … 11=Pisces). The Moon is
+// the emotional/identity core in Jyotish, so it headlines the card.
+const SIGN_VIBES = [
+  "bold, first-mover, zero chill",             // Aries · Mesha
+  "grounded, magnetic, worth the wait",        // Taurus · Vrishabha
+  "quick-witted, curious, always dual-tasking",// Gemini · Mithuna
+  "soft heart, steel core, deeply felt",       // Cancer · Karka
+  "main-character energy, born to shine",       // Leo · Simha
+  "sharp eye, quiet flex, low-key perfectionist",// Virgo · Kanya
+  "charming, fair, aesthetic-coded",            // Libra · Tula
+  "intense, magnetic, sees everything",         // Scorpio · Vrishchika
+  "free spirit, big vision, forever wandering", // Sagittarius · Dhanu
+  "ambitious, patient, plays the long game",    // Capricorn · Makara
+  "original, humane, ahead of the curve",       // Aquarius · Kumbha
+  "dreamy, intuitive, feels the unseen"         // Pisces · Meena
+];
+
+function renderCosmicId(c) {
+  const moon = c.planets.find(p => p.key === "Moon") || {};
+  const asc = c.ascendant || {};
+  const vibe = SIGN_VIBES[moon.signIndex] ?? "one of one";
+  const star = (c.dasha && c.dasha.moonNakshatra) || moon.nakshatra || "";
+  const pada = c.dasha && c.dasha.moonPada;
+  const sa = s => (s ? `<small>${s}</small>` : "");
+  return `
+    <div class="cosmic-id">
+      <div class="cid-head">✦ Your Cosmic ID</div>
+      <ul class="cid-rows">
+        <li><span class="cid-glyph">☾</span><span class="cid-label">Moon</span>
+          <span class="cid-val">${moon.sign || "—"}${sa(moon.signSanskrit)}</span></li>
+        <li><span class="cid-glyph">★</span><span class="cid-label">Star</span>
+          <span class="cid-val">${star || "—"}${pada ? `<small>pada ${pada}</small>` : ""}</span></li>
+        <li><span class="cid-glyph">↑</span><span class="cid-label">Rising</span>
+          <span class="cid-val">${asc.sign || "—"}${sa(asc.signSanskrit)}</span></li>
+      </ul>
+      <div class="cid-vibe">“${vibe}”</div>
+    </div>`;
+}
+
 // ---- Render the chart summary card ----------------------------------------
 function renderChartCard(c) {
   const rows = c.planets
@@ -215,6 +255,7 @@ function renderChartCard(c) {
   $("chartCard").hidden = false;
   $("matchCard").hidden = false;
   $("chartCard").innerHTML = `
+    ${renderCosmicId(c)}
     <h3>Chart</h3>
     <div class="asc">Lagna: <b>${c.ascendant.sign}</b> ${c.ascendant.degInSignFmt}
       · ${c.ascendant.nakshatra}</div>
