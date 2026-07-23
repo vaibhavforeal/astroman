@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>(function(){try{var t=localStorage.getItem("theme");document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
     <title>Pythia · Vedic Astrology Guide</title>
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
@@ -26,6 +27,7 @@
       <header id="mobileBar" class="mobile-bar" hidden>
         <img class="brand-mark" src="logo.png" alt="Pythia" />
         <h1>Pythia</h1>
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode" style="margin-left:auto"></button>
       </header>
       <!-- ===== Left panel: birth details + chart ===== -->
       <aside class="panel" id="panel">
@@ -35,6 +37,7 @@
             <h1>Pythia</h1>
             <p class="tag">Jyotish &amp; numerology guide</p>
           </div>
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode"></button>
           <button type="button" id="panelClose" class="panel-close" aria-label="Close panel">✕</button>
         </div>
 
@@ -214,6 +217,7 @@
       </div>
     </div>
 
+    <script src="theme.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

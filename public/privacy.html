@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>(function(){try{var t=localStorage.getItem("theme");document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
     <title>Privacy Policy · Pythia</title>
     <meta name="description" content="How Pythia collects, uses and protects your data." />
     <link rel="manifest" href="/manifest.json" />
@@ -20,7 +21,10 @@
         <img class="brand-mark" src="logo.png" alt="Pythia" />
         <span>Pythia</span>
       </a>
-      <a class="btn btn-ghost" href="/app">Open the app</a>
+      <div class="nav-actions">
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode"></button>
+        <a class="btn btn-ghost" href="/app">Open the app</a>
+      </div>
     </header>
 
     <main class="legal">
@@ -146,5 +150,6 @@
       </nav>
       <p class="foot-copy">© 2026 Pythia</p>
     </footer>
+    <script src="theme.js"></script>
   </body>
 </html>

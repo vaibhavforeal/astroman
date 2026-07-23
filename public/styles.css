@@ -130,7 +130,7 @@ button {
   position: relative; overflow: hidden;
   margin: 0 0 14px; padding: 14px 16px 13px;
   border-radius: var(--radius);
-  background: linear-gradient(135deg, #0b2a4a 0%, var(--sky-deep) 55%, #3f6fd0 100%);
+  background: linear-gradient(135deg, #0b2a4a 0%, #0a4c88 55%, #3f6fd0 100%);
   color: #fff; box-shadow: 0 3px 12px rgba(11, 42, 74, 0.22);
 }
 .cosmic-id::after {                       /* faint starfield sparkle */
@@ -817,3 +817,74 @@ button {
   .features { grid-template-columns: 1fr; }
   .hero { padding: 32px 20px; }
 }
+
+/* ============================================================
+   Dark cosmic theme — palette override + a few surface fixes.
+   Applied via [data-theme="dark"] on <html> (see theme.js).
+   Everything else is variable-driven, so it cascades for free.
+   ============================================================ */
+:root[data-theme="dark"] {
+  --app-bg: #0a0f1e;         /* deep space backdrop */
+  --panel: #141b30;          /* sidebar + card surfaces */
+  --panel2: #1b2440;         /* insets, code, blockquotes */
+  --field: #1a2236;          /* input backgrounds */
+  --ink: #e7eefb;            /* primary text */
+  --muted: #9db0cc;          /* secondary text */
+  --faint: #6d82a4;          /* tertiary text / hints */
+  --sky: #4cb8f5;            /* primary accent (brighter for dark) */
+  --sky-deep: #8fd0fb;       /* headings / links on dark */
+  --sky-soft: #17263f;       /* soft accent fill */
+  --accent: #8ab4ff;
+  --amber: #f0b429;          /* text-safe gold on dark */
+  --good: #34d399;
+  --line: #26324c;           /* borders */
+  --line-soft: #1d2740;      /* faint dividers */
+  --user: #24344f;           /* user avatar */
+  --err: #ff6b6f;
+  --on-accent: #06121f;      /* dark text on bright accent buttons */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+/* Dark cosmic backdrop: heavy dark overlay over the illustration. */
+[data-theme="dark"] html,
+[data-theme="dark"] body {
+  background:
+    linear-gradient(rgba(9, 13, 27, 0.84), rgba(7, 11, 22, 0.9)),
+    url("cosmos-bg.webp") center center / cover no-repeat fixed,
+    var(--app-bg);
+}
+[data-theme="dark"] .auth-overlay {
+  background:
+    linear-gradient(rgba(9, 13, 27, 0.82), rgba(7, 11, 22, 0.9)),
+    url("cosmos-bg.webp") center center / cover no-repeat fixed;
+}
+/* The navy line-art logo vanishes on dark — recolour the mark to white.
+   (brightness(0) → black silhouette preserving alpha, invert(1) → white.) */
+[data-theme="dark"] .brand-mark,
+[data-theme="dark"] .hero-logo,
+[data-theme="dark"] .auth-mark {
+  filter: brightness(0) invert(1);
+  opacity: 0.94;
+}
+
+/* Keep the Google button white (branding) — fix its text colour for dark. */
+[data-theme="dark"] .google-btn { color: #202124; }
+[data-theme="dark"] .google-btn:hover { background: #f1f3f6; }
+/* Scrollbars */
+[data-theme="dark"] * { scrollbar-color: #2b3a57 transparent; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #2b3a57; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #3a4d70; }
+
+/* Theme toggle (present in both themes) */
+.theme-toggle {
+  width: 36px; height: 36px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  font-size: 15px; line-height: 1; cursor: pointer;
+  background: var(--panel2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 999px;
+  transition: background .15s, border-color .15s;
+}
+.theme-toggle:hover { border-color: var(--sky); background: var(--sky-soft); }
+.theme-toggle::before { content: "🌙"; }
+[data-theme="dark"] .theme-toggle::before { content: "☀️"; }
+.nav-actions { display: flex; align-items: center; gap: 12px; }
