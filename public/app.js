@@ -721,10 +721,10 @@ function onAuthed(user) {
 
 function applyAuthMode() {
   const reg = authMode === "register";
-  $("authTitle").textContent = reg ? "Create your account" : "Welcome to Pythia";
+  $("authTitle").textContent = reg ? "Start your chart." : "Your chart's waiting.";
   $("authSub").textContent = reg
-    ? "Sign up with your email and a password (at least 8 characters)."
-    : "Log in to cast and save charts.";
+    ? "Sign up with email + a password (8+ characters). Takes a sec."
+    : "Log in to cast, save and talk to your chart.";
   authSubmit.textContent = reg ? "Create account" : "Log in";
   $("authSwitchText").textContent = reg ? "Already have an account?" : "New here?";
   $("authSwitch").textContent = reg ? "Log in" : "Create an account";
