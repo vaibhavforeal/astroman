@@ -468,6 +468,64 @@ function shareMatch(d) {
   });
 }
 
+// ---- Daily cosmic weather -------------------------------------------------
+// The transit Moon's house from the natal Moon (Chandra gochar, 1–12) is the
+// classic daily indicator. Auspicious houses (1,3,6,7,10,11) read upbeat;
+// mixed (4,9); tough (8=Chandrashtama, 12) read as rest days.
+const DAILY = {
+  1:  { emoji: "🌟", head: "main-character day", line: "the Moon's on your sign — you're the moment. lead with it.", mood: "good" },
+  2:  { emoji: "💰", head: "soft-launch your bag", line: "good energy for money, food and slow wins. treat yourself.", mood: "good" },
+  3:  { emoji: "🔥", head: "unstoppable energy", line: "courage is high — send the text, start the thing. you win today.", mood: "good" },
+  4:  { emoji: "🏡", head: "cozy recharge", line: "big homebody energy. protect your peace, don't force it.", mood: "mixed" },
+  5:  { emoji: "✨", head: "romance & main quests", line: "creative, flirty, a little lucky. put yourself out there.", mood: "good" },
+  6:  { emoji: "🥊", head: "you vs the problem", line: "upper hand on rivals and the to-do list. handle it.", mood: "good" },
+  7:  { emoji: "🤝", head: "connection mode", line: "people, dates, collabs flow. say yes to the plans.", mood: "good" },
+  8:  { emoji: "🌑", head: "low-key rest day", line: "Chandrashtama — energy dips. rest, don't start big things.", mood: "low" },
+  9:  { emoji: "🎲", head: "keep it steady", line: "luck's a little shy today. don't gamble the important stuff.", mood: "mixed" },
+  10: { emoji: "⚡", head: "lock in", line: "career and action are favored. get the hard thing done.", mood: "good" },
+  11: { emoji: "🏆", head: "wins & clout", line: "gains, good news, social glow — best day of the cycle.", mood: "good" },
+  12: { emoji: "😴", head: "battery low", line: "expenses and tiredness creep in. slow down, guard your energy.", mood: "low" }
+};
+
+const WX_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function fmtWeatherDate(iso) {
+  if (!iso) return "";
+  const [, m, d] = iso.split("-").map(Number);
+  return WX_MONTHS[(m || 1) - 1] + " " + (d || "");
+}
+
+function renderDailyWeather(c) {
+  const el = $("dailyWeather");
+  if (!el) return;
+  const tm = c.transits && c.transits.planets && c.transits.planets.find(p => p.key === "Moon");
+  if (!tm) { el.hidden = true; return; }
+
+  const w = DAILY[tm.fromMoon] || DAILY[1];
+  const notes = [];
+  if (c.sadeSati && c.sadeSati.active) notes.push("Sade Sati" + (c.sadeSati.phase ? " (" + c.sadeSati.phase + ")" : "") + " — go gentle");
+  else if (c.sadeSati && c.sadeSati.smallPanoti && c.sadeSati.smallPanoti.active) notes.push("small panoti");
+
+  el.className = "daily-weather dw-" + w.mood;
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="dw-emoji">${w.emoji}</div>
+    <div class="dw-body">
+      <div class="dw-top"><span class="dw-head">${w.head}</span><span class="dw-date">${fmtWeatherDate(c.transits.date)}</span></div>
+      <div class="dw-line">${w.line}</div>
+      <div class="dw-meta">☾ Moon in ${tm.sign} · ${ordJS(tm.fromMoon)} from your Moon${notes.length ? " · " + notes.join(" · ") : ""}</div>
+    </div>
+    <button type="button" class="dw-ask" id="dwAsk" title="Ask about today" aria-label="Ask about today">→</button>`;
+
+  const ask = $("dwAsk");
+  if (ask) ask.addEventListener("click", () => {
+    if (streaming || !chart) return;
+    sendMessage(
+      `What's my cosmic weather today? The transiting Moon is in ${tm.sign}, ${ordJS(tm.fromMoon)} from my natal Moon` +
+      `${notes.length ? " (" + notes.join(", ") + ")" : ""}. How should I approach today, and anything to watch for?`
+    );
+  });
+}
+
 // ---- Render the chart summary card ----------------------------------------
 function renderChartCard(c) {
   const rows = c.planets
@@ -618,6 +676,8 @@ function renderChartCard(c) {
     bs.addEventListener("change", renderBav);
     renderBav();
   }
+
+  renderDailyWeather(c);
 }
 
 function ordJS(n) {

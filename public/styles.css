@@ -390,6 +390,33 @@ button {
 /* ---------- Chat ---------- */
 .chat { display: flex; flex-direction: column; height: 100vh; }
 
+/* Daily cosmic weather — pinned atop the chat, coloured by the day's mood. */
+.daily-weather {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 16px 0; padding: 11px 14px;
+  border-radius: var(--radius);
+  background: var(--panel); border: 1px solid var(--line);
+  border-left: 4px solid var(--dw, var(--sky));
+  box-shadow: var(--shadow-sm);
+}
+.dw-good  { --dw: var(--good); }
+.dw-mixed { --dw: var(--amber); }
+.dw-low   { --dw: var(--faint); }
+.dw-emoji { font-size: 26px; line-height: 1; flex: 0 0 auto; }
+.dw-body { flex: 1; min-width: 0; }
+.dw-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dw-head { font-family: var(--font-head); font-size: 15px; font-weight: 700; color: var(--dw); }
+.dw-date { font-size: 11px; color: var(--faint); flex: 0 0 auto; }
+.dw-line { font-size: 12.5px; color: var(--ink); margin-top: 2px; line-height: 1.35; }
+.dw-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.dw-ask {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--field); color: var(--sky-deep);
+  cursor: pointer; font-size: 15px; line-height: 1;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.dw-ask:hover { background: var(--sky); color: var(--on-accent); border-color: transparent; }
+
 .chat-scroll { flex: 1; overflow-y: auto; padding: 24px 0; }
 
 .welcome {
@@ -651,6 +678,10 @@ button {
 
   /* Chat gutters; keep content clear of the fixed top bar */
   .chat-scroll { padding: 64px 0 18px; }
+  /* Daily weather clears the fixed bar itself; when shown, drop the scroll's
+     top gutter so messages don't start with a double gap. */
+  .daily-weather { margin: 62px 16px 0; }
+  .daily-weather:not([hidden]) + .chat-scroll { padding-top: 14px; }
   .msg { padding: 0 14px; gap: 10px; }
   .suggestions, .composer { padding-left: 14px; padding-right: 14px; }
   .welcome { margin-top: 6vh; }
