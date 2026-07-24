@@ -7,6 +7,7 @@ let nodeMode = "jupiter"; // Rahu/Ketu aspects: "jupiter" (5/7/9) | "seventh" (7
 let lastInput = null; // last birth input, so the node toggle can recompute
 let currentVarga = "D10"; // which divisional chart the selector shows
 let currentBav = "Saturn"; // which planet's Bhinnashtakavarga the SAV table shows
+let nerdOpen = false; // whether the "nerd mode" table panel is expanded in the feed
 
 // ---- Elements -------------------------------------------------------------
 const $ = id => document.getElementById(id);
@@ -73,12 +74,27 @@ function wireCityGeocode(cityEl, listEl, latEl, lonEl, tzEl) {
   const byLabel = new Map(); // option label -> { lat, lon, tz }
   let timer = null;
   let lastQuery = "";
+  let fromPick = false; // true while lat/lon/tz hold values we filled from a pick
 
   const apply = m => {
     latEl.value = m.lat;
     lonEl.value = m.lon;
-    if (m.tz !== null && m.tz !== undefined) tzEl.value = m.tz;
+    // A place with no known timezone yields tz: null — blank the field rather
+    // than leaving the previous city's offset behind (it's hidden by default).
+    tzEl.value = m.tz === null || m.tz === undefined ? "" : m.tz;
+    fromPick = true;
   };
+
+  // Typing past a picked city invalidates its coordinates: drop them so we
+  // can't cast a chart for one place while the city box names another.
+  const dropPicked = () => {
+    if (!fromPick) return;
+    latEl.value = lonEl.value = tzEl.value = "";
+    fromPick = false;
+  };
+
+  // A manual edit takes ownership of the fields — never wipe those.
+  [latEl, lonEl, tzEl].forEach(el => el.addEventListener("input", () => (fromPick = false)));
 
   async function search(q) {
     try {
@@ -101,6 +117,7 @@ function wireCityGeocode(cityEl, listEl, latEl, lonEl, tzEl) {
   cityEl.addEventListener("input", () => {
     // Choosing a suggestion drops its full label into the field — fill on match.
     if (byLabel.has(cityEl.value)) return apply(byLabel.get(cityEl.value));
+    dropPicked();
     const q = cityEl.value.trim();
     if (q.length < 2 || q === lastQuery) return;
     lastQuery = q;
@@ -110,9 +127,39 @@ function wireCityGeocode(cityEl, listEl, latEl, lonEl, tzEl) {
   cityEl.addEventListener("change", () => {
     if (byLabel.has(cityEl.value)) apply(byLabel.get(cityEl.value));
   });
+
+  // Lets callers that fill lat/lon/tz themselves (e.g. loading a saved person)
+  // claim the fields, so later city typing doesn't clear them as stale picks.
+  return () => (fromPick = false);
 }
 
-wireCityGeocode(cityInput, cityList, $("lat"), $("lon"), $("tz"));
+const releaseCoords = wireCityGeocode(cityInput, cityList, $("lat"), $("lon"), $("tz"));
+
+// ---- "Enter coordinates manually" toggle ----------------------------------
+// Lat/lon/tz are auto-filled from the city pick, so they're hidden by default.
+// This reveals them for manual entry / overrides (and validation opens them if
+// a city wasn't picked). Returns a fn that force-reveals the section.
+function wireAdvanced(toggleId, fieldsId) {
+  const t = $(toggleId), f = $(fieldsId);
+  if (!t || !f) return () => {};
+  const set = open => {
+    f.hidden = !open;
+    t.setAttribute("aria-expanded", open ? "true" : "false");
+    const caret = t.querySelector(".adv-caret");
+    if (caret) caret.textContent = open ? "▴" : "▾";
+    const label = t.querySelector(".adv-label");
+    if (label) label.textContent = open ? "hide coordinates" : "enter coordinates manually";
+  };
+  t.addEventListener("click", () => set(f.hidden));
+  return () => set(true);
+}
+const revealAdvanced = wireAdvanced("advToggle", "advFields");
+
+// True only when lat, lon and tz are all present (a picked city fills them).
+// tz can legitimately be "0" (UTC), so test for empty strings, not falsiness.
+function coordsMissing(latEl, lonEl, tzEl) {
+  return [latEl, lonEl, tzEl].some(el => String(el.value).trim() === "");
+}
 
 // ---- Cast chart -----------------------------------------------------------
 form.addEventListener("submit", async e => {
@@ -122,6 +169,18 @@ form.addEventListener("submit", async e => {
   const dob = $("dob").value; // YYYY-MM-DD
   const tob = $("tob").value || "12:00"; // HH:MM
   if (!dob) return showFormErr("Please enter a date of birth.");
+
+  if (coordsMissing($("lat"), $("lon"), $("tz"))) {
+    revealAdvanced(); // show the fields so the user can see what's needed
+    // Lat/lon present but no tz means the geocoder knew the place but not its
+    // timezone — say so, rather than sending the user back to the city box.
+    const located = [$("lat"), $("lon")].every(el => String(el.value).trim() !== "");
+    return showFormErr(
+      located
+        ? "We couldn't work out the UTC offset for that place — please enter it below."
+        : "Pick your city from the list so we can locate your chart — or add coordinates manually below."
+    );
+  }
 
   const [year, month, day] = dob.split("-").map(Number);
   const [hour, minute] = tob.split(":").map(Number);
@@ -167,7 +226,7 @@ async function castChart(input, reset) {
     showFormErr(err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Cast chart";
+    btn.textContent = "cast my chart ✦";
   }
 }
 
@@ -195,32 +254,103 @@ const SIGN_VIBES = [
   "dreamy, intuitive, feels the unseen"         // Pisces · Meena
 ];
 
+// Zodiac glyphs + classical elements by signIndex (0=Aries…11=Pisces) — powers
+// the Cosmic ID's element identity, accent colour and inline sign glyphs.
+// The trailing ︎ forces text (monochrome) presentation — without it these
+// render as colour emoji on Windows/Android.
+const ZODIAC_GLYPH = ["♈︎", "♉︎", "♊︎", "♋︎", "♌︎", "♍︎", "♎︎", "♏︎", "♐︎", "♑︎", "♒︎", "♓︎"];
+const ELEMENTS = [
+  { name: "Fire",  color: "#fb7185" },
+  { name: "Earth", color: "#34d399" },
+  { name: "Air",   color: "#7dd3fc" },
+  { name: "Water", color: "#60a5fa" }
+];
+// Aries=Fire, Taurus=Earth, Gemini=Air, Cancer=Water, then repeating.
+const elementOf = i => ELEMENTS[(((i % 4) + 4) % 4)] || ELEMENTS[0];
+
+// Astrological glyph per graha, for the "era" card (Mars/Venus need ︎ to
+// stay monochrome). Rahu/Ketu use the ascending/descending node symbols.
+const PLANET_GLYPH = {
+  Sun: "☉", Moon: "☽", Mars: "♂︎", Mercury: "☿",
+  Jupiter: "♃", Venus: "♀︎", Saturn: "♄", Rahu: "☊", Ketu: "☋"
+};
+
 // Gen Z headline per Guna Milan band (thresholds set server-side in
 // gunamilan.js: poor <18, average 18-24, good 25-32, excellent ≥33).
 const SHIP = {
-  excellent: { emoji: "💫", head: "written in the stars", sub: "basically soulmates" },
-  good:      { emoji: "💚", head: "green-flag energy",     sub: "strong match" },
-  average:   { emoji: "🤞", head: "worth a shot",          sub: "potential, needs effort" },
-  poor:      { emoji: "🚩", head: "the stars said pause",  sub: "proceed with caution" }
+  excellent: { emoji: "✦", head: "written in the stars", sub: "basically soulmates" },
+  good:      { emoji: "♡", head: "green-flag energy",     sub: "strong match" },
+  average:   { emoji: "◑", head: "worth a shot",          sub: "potential, needs effort" },
+  poor:      { emoji: "△", head: "the stars said pause",  sub: "proceed with caution" }
 };
+
+// Gen Z gloss for the running Vimshottari dasha lord — the "era" you're in.
+// Keyed by planet name (server sends d.maha.lord / d.antar.lord).
+const PLANET_ERA = {
+  Sun:     { head: "main-character era",     line: "visibility, authority, ego glow-up. time to be seen and take the lead." },
+  Moon:    { head: "soft / all-feels era",   line: "emotions, home and comfort run the show. nurture yourself and your people." },
+  Mars:    { head: "beast-mode era",         line: "drive, courage, competition. channel the heat into the goal — don't burn out." },
+  Mercury: { head: "hustle & comms era",     line: "deals, skills, networking, side quests. your mind is the money right now." },
+  Jupiter: { head: "glow-up era",            line: "growth, luck, wisdom, expansion. say yes to the bigger thing." },
+  Venus:   { head: "soft-life & love era",   line: "romance, beauty, luxury, art. treat yourself and let people in." },
+  Saturn:  { head: "lock-in / hard-mode era", line: "discipline, patience, real results. put in the reps — it pays off later." },
+  Rahu:    { head: "chaotic-ambition era",   line: "obsession, hype, big swings, foreign vibes. dream huge but stay grounded." },
+  Ketu:    { head: "detachment / inner era", line: "letting go, spirituality, quiet endings. less noise, more meaning." }
+};
+
+// Gen Z one-liner per yoga category (server tags each yoga with .category).
+// Favorable yogas become "green flags"; challenging ones surface under Heads-up.
+// Multiple yogas can share a category, so cards group by category (see
+// groupYogas) to avoid repeating the same gloss.
+const YOGA_VIBES = {
+  Mahapurusha: { emoji: "✶", title: "great-person energy", line: "a rare 'great person' placement — genuine main-character coding." },
+  Raja:        { emoji: "✦", title: "built to rise",       line: "power & status yoga — you climb, and people notice." },
+  Dhana:       { emoji: "◈", title: "money magnet",        line: "wealth yoga — the bag follows when you lean in." },
+  Lunar:       { emoji: "☾", title: "emotionally held",    line: "support yoga — you're rarely left carrying it alone." },
+  Special:     { emoji: "✧", title: "one of one",          line: "a rare combo — a genuine one-of-one edge." },
+  Challenging: { emoji: "△", title: "plot-twist arc",      line: "an intense pattern — real growth through the hard stuff." }
+};
+
+// Group yogas by category into de-duplicated rows (emoji, title, line, names[]),
+// so several yogas of one category collapse into a single card row.
+function groupYogas(yogas) {
+  const order = [];
+  const by = {};
+  for (const y of yogas || []) {
+    if (!by[y.category]) { by[y.category] = []; order.push(y.category); }
+    if (!by[y.category].includes(y.name)) by[y.category].push(y.name);
+  }
+  return order.map(cat => {
+    const g = YOGA_VIBES[cat] || { emoji: "✅", title: cat, line: "" };
+    return { emoji: g.emoji, title: g.title || cat, line: g.line, names: by[cat] };
+  });
+}
 
 function renderCosmicId(c) {
   const moon = c.planets.find(p => p.key === "Moon") || {};
   const asc = c.ascendant || {};
-  const vibe = SIGN_VIBES[moon.signIndex] ?? "one of one";
+  const mi = moon.signIndex;
+  const vibe = SIGN_VIBES[mi] ?? "one of one";
   const star = (c.dasha && c.dasha.moonNakshatra) || moon.nakshatra || "";
   const pada = c.dasha && c.dasha.moonPada;
+  const el = Number.isInteger(mi) ? elementOf(mi) : ELEMENTS[0];
   const sa = s => (s ? `<small>${s}</small>` : "");
+  const zg = i => (Number.isInteger(i) ? `<span class="cid-zodiac">${ZODIAC_GLYPH[i]}</span>` : "");
+  const watermark = Number.isInteger(mi) ? ZODIAC_GLYPH[mi] : "✦";
   return `
-    <div class="cosmic-id">
-      <div class="cid-head">✦ Your Cosmic ID</div>
+    <div class="cosmic-id" style="--elem:${el.color}">
+      <div class="cid-watermark" aria-hidden="true">${watermark}</div>
+      <div class="cid-top">
+        <div class="cid-head">✦ Your Cosmic ID</div>
+        <span class="cid-elem">${el.name}</span>
+      </div>
       <ul class="cid-rows">
         <li><span class="cid-glyph">☾</span><span class="cid-label">Moon</span>
-          <span class="cid-val">${moon.sign || "—"}${sa(moon.signSanskrit)}</span></li>
+          <span class="cid-val">${moon.sign || "—"}${zg(mi)}${sa(moon.signSanskrit)}</span></li>
         <li><span class="cid-glyph">★</span><span class="cid-label">Star</span>
           <span class="cid-val">${star || "—"}${pada ? `<small>pada ${pada}</small>` : ""}</span></li>
         <li><span class="cid-glyph">↑</span><span class="cid-label">Rising</span>
-          <span class="cid-val">${asc.sign || "—"}${sa(asc.signSanskrit)}</span></li>
+          <span class="cid-val">${asc.sign || "—"}${zg(asc.signIndex)}${sa(asc.signSanskrit)}</span></li>
       </ul>
       <div class="cid-vibe">“${vibe}”</div>
       <div class="cid-actions">
@@ -391,7 +521,8 @@ async function buildMatchStoryImage(d) {
   const ship = SHIP[d.verdict.band] || SHIP.average;
   const pct = Math.round((d.total / d.max) * 100);
 
-  ctx.font = "120px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "112px 'Segoe UI Symbol', Georgia, 'Segoe UI Emoji', serif";
   ctx.fillText(ship.emoji, W / 2, 900);
 
   ctx.fillStyle = "#ffffff";
@@ -473,18 +604,18 @@ function shareMatch(d) {
 // classic daily indicator. Auspicious houses (1,3,6,7,10,11) read upbeat;
 // mixed (4,9); tough (8=Chandrashtama, 12) read as rest days.
 const DAILY = {
-  1:  { emoji: "🌟", head: "main-character day", line: "the Moon's on your sign — you're the moment. lead with it.", mood: "good" },
-  2:  { emoji: "💰", head: "soft-launch your bag", line: "good energy for money, food and slow wins. treat yourself.", mood: "good" },
-  3:  { emoji: "🔥", head: "unstoppable energy", line: "courage is high — send the text, start the thing. you win today.", mood: "good" },
-  4:  { emoji: "🏡", head: "cozy recharge", line: "big homebody energy. protect your peace, don't force it.", mood: "mixed" },
-  5:  { emoji: "✨", head: "romance & main quests", line: "creative, flirty, a little lucky. put yourself out there.", mood: "good" },
-  6:  { emoji: "🥊", head: "you vs the problem", line: "upper hand on rivals and the to-do list. handle it.", mood: "good" },
-  7:  { emoji: "🤝", head: "connection mode", line: "people, dates, collabs flow. say yes to the plans.", mood: "good" },
-  8:  { emoji: "🌑", head: "low-key rest day", line: "Chandrashtama — energy dips. rest, don't start big things.", mood: "low" },
-  9:  { emoji: "🎲", head: "keep it steady", line: "luck's a little shy today. don't gamble the important stuff.", mood: "mixed" },
-  10: { emoji: "⚡", head: "lock in", line: "career and action are favored. get the hard thing done.", mood: "good" },
-  11: { emoji: "🏆", head: "wins & clout", line: "gains, good news, social glow — best day of the cycle.", mood: "good" },
-  12: { emoji: "😴", head: "battery low", line: "expenses and tiredness creep in. slow down, guard your energy.", mood: "low" }
+  1:  { head: "main-character day", line: "the Moon's on your sign — you're the moment. lead with it.", mood: "good" },
+  2:  { head: "soft-launch your bag", line: "good energy for money, food and slow wins. treat yourself.", mood: "good" },
+  3:  { head: "unstoppable energy", line: "courage is high — send the text, start the thing. you win today.", mood: "good" },
+  4:  { head: "cozy recharge", line: "big homebody energy. protect your peace, don't force it.", mood: "mixed" },
+  5:  { head: "romance & main quests", line: "creative, flirty, a little lucky. put yourself out there.", mood: "good" },
+  6:  { head: "you vs the problem", line: "upper hand on rivals and the to-do list. handle it.", mood: "good" },
+  7:  { head: "connection mode", line: "people, dates, collabs flow. say yes to the plans.", mood: "good" },
+  8:  { head: "low-key rest day", line: "Chandrashtama — energy dips. rest, don't start big things.", mood: "low" },
+  9:  { head: "keep it steady", line: "luck's a little shy today. don't gamble the important stuff.", mood: "mixed" },
+  10: { head: "lock in", line: "career and action are favored. get the hard thing done.", mood: "good" },
+  11: { head: "wins & clout", line: "gains, good news, social glow — best day of the cycle.", mood: "good" },
+  12: { head: "battery low", line: "expenses and tiredness creep in. slow down, guard your energy.", mood: "low" }
 };
 
 const WX_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -494,40 +625,170 @@ function fmtWeatherDate(iso) {
   return WX_MONTHS[(m || 1) - 1] + " " + (d || "");
 }
 
-function renderDailyWeather(c) {
-  const el = $("dailyWeather");
-  if (!el) return;
-  const tm = c.transits && c.transits.planets && c.transits.planets.find(p => p.key === "Moon");
-  if (!tm) { el.hidden = true; return; }
+// ---- Vibe-card feed builders ----------------------------------------------
+// Each returns an HTML string; renderChartCard stitches them into #feed. The
+// "go deeper →" buttons carry a data-cta the delegated handler turns into a
+// grounded chat question (see handleCta).
 
+// Today's vibe — the transit Moon's house from the natal Moon (reuses DAILY).
+function renderTodayCard(c) {
+  const tm = c.transits && c.transits.planets && c.transits.planets.find(p => p.key === "Moon");
+  if (!tm) return "";
   const w = DAILY[tm.fromMoon] || DAILY[1];
   const notes = [];
-  if (c.sadeSati && c.sadeSati.active) notes.push("Sade Sati" + (c.sadeSati.phase ? " (" + c.sadeSati.phase + ")" : "") + " — go gentle");
+  if (c.sadeSati && c.sadeSati.active) notes.push("Sade Sati" + (c.sadeSati.phase ? " (" + c.sadeSati.phase + ")" : ""));
   else if (c.sadeSati && c.sadeSati.smallPanoti && c.sadeSati.smallPanoti.active) notes.push("small panoti");
-
-  el.className = "daily-weather dw-" + w.mood;
-  el.hidden = false;
-  el.innerHTML = `
-    <div class="dw-emoji">${w.emoji}</div>
-    <div class="dw-body">
-      <div class="dw-top"><span class="dw-head">${w.head}</span><span class="dw-date">${fmtWeatherDate(c.transits.date)}</span></div>
-      <div class="dw-line">${w.line}</div>
-      <div class="dw-meta">☾ Moon in ${tm.sign} · ${ordJS(tm.fromMoon)} from your Moon${notes.length ? " · " + notes.join(" · ") : ""}</div>
-    </div>
-    <button type="button" class="dw-ask" id="dwAsk" title="Ask about today" aria-label="Ask about today">→</button>`;
-
-  const ask = $("dwAsk");
-  if (ask) ask.addEventListener("click", () => {
-    if (streaming || !chart) return;
-    sendMessage(
-      `What's my cosmic weather today? The transiting Moon is in ${tm.sign}, ${ordJS(tm.fromMoon)} from my natal Moon` +
-      `${notes.length ? " (" + notes.join(", ") + ")" : ""}. How should I approach today, and anything to watch for?`
-    );
-  });
+  return `
+    <div class="vibe-card vc-today dw-${w.mood}">
+      <div class="vc-emoji">${({ good: "✦", mixed: "✧", low: "☾" })[w.mood] || "✦"}</div>
+      <div class="vc-kicker">today's vibe · ${fmtWeatherDate(c.transits.date)}</div>
+      <div class="vc-head">${w.head}</div>
+      <div class="vc-line">${w.line}</div>
+      <div class="vc-meta">☾ Moon in ${tm.sign} · ${ordJS(tm.fromMoon)} from your Moon${notes.length ? " · " + notes.join(" · ") : ""}</div>
+      <button type="button" class="vibe-cta" data-cta="today">what's today about? →</button>
+    </div>`;
 }
 
-// ---- Render the chart summary card ----------------------------------------
+// The era you're in — from the running Mahadasha / Antardasha lords.
+function renderEraCard(c) {
+  const d = c.dasha;
+  if (!d || !d.maha) return "";
+  const maha = PLANET_ERA[d.maha.lord] || { head: d.maha.lord + " era", line: "a big chapter of life is running." };
+  const antar = PLANET_ERA[d.antar && d.antar.lord];
+  const sub = d.antar
+    ? `<span class="vc-sub">right now: <b>${d.antar.lord}</b> sub-vibe${antar ? " — " + antar.head : ""}</span>`
+    : "";
+  const yr = s => (s || "").slice(0, 4);
+  return `
+    <div class="vibe-card vc-era">
+      <div class="vc-emoji vc-era-glyph">${PLANET_GLYPH[d.maha.lord] || "✦"}</div>
+      <div class="vc-kicker">the era you're in</div>
+      <div class="vc-head">${maha.head}</div>
+      <div class="vc-line">${maha.line}</div>
+      ${sub}
+      <div class="vc-meta">${PLANET_GLYPH[d.maha.lord] || "☉"} ${d.maha.lord} Mahadasha · ${yr(d.maha.start)} → ${yr(d.maha.end)}</div>
+      <button type="button" class="vibe-cta" data-cta="era">what's this era mean for me? →</button>
+    </div>`;
+}
+
+// Your green flags — favorable yogas, glossed by category.
+function renderPowerCard(c) {
+  const fav = (c.yogas || []).filter(y => y.favorable);
+  if (!fav.length) {
+    return `
+    <div class="vibe-card vc-power">
+      <div class="vc-emoji">✧</div>
+      <div class="vc-kicker">your green flags</div>
+      <div class="vc-head">quiet-luck coded</div>
+      <div class="vc-line">no loud power-yogas here — which just means your wins sneak up quietly and <b>stick</b>. underdog arc energy. ✦</div>
+      <button type="button" class="vibe-cta" data-cta="power">where's my edge? →</button>
+    </div>`;
+  }
+  const groups = groupYogas(fav);
+  const rows = groups.map(g =>
+    `<li><span class="pw-emoji">${g.emoji}</span><div>
+        <b>${g.title}</b>
+        <small>${g.line}</small>
+        <span class="pw-tag">${g.names.map(escAttr).join(" · ")}</span>
+      </div></li>`
+  ).join("");
+  return `
+    <div class="vibe-card vc-power">
+      <div class="vc-emoji">✧</div>
+      <div class="vc-kicker">your green flags <span class="vc-badge">${groups.length}</span></div>
+      <div class="vc-head">your superpowers</div>
+      <ul class="pw-list">${rows}</ul>
+      <button type="button" class="vibe-cta" data-cta="power">break down my strengths →</button>
+    </div>`;
+}
+
+// Heads up — challenging yogas + active Sade Sati / small panoti.
+function renderHeadsUpCard(c) {
+  const items = groupYogas((c.yogas || []).filter(y => !y.favorable)).map(g => ({
+    emoji: g.emoji,
+    name: g.title,
+    line: g.line,
+    tag: g.names.join(" · ")
+  }));
+  const ss = c.sadeSati;
+  if (ss && ss.active) {
+    items.push({
+      emoji: "♄",
+      name: "Sade Sati" + (ss.phase ? " · " + ss.phase + " phase" : ""),
+      line: "Saturn's running its long lesson arc. go gentle, don't start huge things on impulse" + (ss.end ? " — it eases up around " + ss.end + "." : ".")
+    });
+  } else if (ss && ss.smallPanoti && ss.smallPanoti.active) {
+    items.push({ emoji: "☾", name: ss.smallPanoti.type, line: "a shorter Saturn dip — pace yourself, protect your energy." });
+  }
+  if (!items.length) {
+    return `
+    <div class="vibe-card vc-heads calm">
+      <div class="vc-emoji">✓</div>
+      <div class="vc-kicker">heads up</div>
+      <div class="vc-head">all clear rn</div>
+      <div class="vc-line">no major red flags in your chart or in the sky today. cruise. ✦</div>
+      <button type="button" class="vibe-cta" data-cta="heads">any remedies for me anyway? →</button>
+    </div>`;
+  }
+  const rows = items.slice(0, 4).map(i =>
+    `<li><span class="pw-emoji">${i.emoji}</span><div><b>${escAttr(i.name)}</b><small>${i.line}</small>${i.tag ? `<span class="pw-tag">${escAttr(i.tag)}</span>` : ""}</div></li>`
+  ).join("");
+  return `
+    <div class="vibe-card vc-heads">
+      <div class="vc-emoji">△</div>
+      <div class="vc-kicker">heads up</div>
+      <div class="vc-head">go gentle on…</div>
+      <ul class="pw-list">${rows}</ul>
+      <button type="button" class="vibe-cta" data-cta="heads">what do i do about these? →</button>
+    </div>`;
+}
+
+// Ship-check entry — opens the compatibility form (in the sidebar drawer).
+function renderShipCta() {
+  return `
+    <div class="vibe-card vc-ship">
+      <div class="vc-emoji">♡</div>
+      <div class="vc-kicker">ship check</div>
+      <div class="vc-head">will it work?</div>
+      <div class="vc-line">check your compatibility with anyone — crush, situationship, whoever. real Vedic math, one big verdict.</div>
+      <button type="button" class="vibe-cta" data-cta="ship">check a ship →</button>
+    </div>`;
+}
+
+// ---- Render the vibe feed (playful cards) + nerd panel --------------------
+// Called on every cast (and node-toggle recompute). Rebuilds #feed; the chat
+// history below it is untouched. Interactions are delegated once (setupFeed).
 function renderChartCard(c) {
+  const feed = $("feed");
+  if (!feed) return;
+  feed.hidden = false;
+  $("matchCard").hidden = false;
+
+  feed.innerHTML =
+    renderCosmicId(c) +
+    renderTodayCard(c) +
+    renderEraCard(c) +
+    renderPowerCard(c) +
+    renderHeadsUpCard(c) +
+    renderShipCta() +
+    `<div class="nerd-card">
+      <button type="button" class="nerd-toggle" id="nerdToggle" aria-expanded="${nerdOpen ? "true" : "false"}">
+        <span class="nerd-label">✦ nerd mode</span>
+        <span class="nerd-hint">the real chart — grahas, dasha, vargas, ashtakavarga</span>
+        <span class="nerd-caret">${nerdOpen ? "▲" : "▼"}</span>
+      </button>
+      <div class="nerd-panel"${nerdOpen ? "" : " hidden"}><div class="chart-card nerd-inner">${renderNerdPanel(c)}</div></div>
+    </div>`;
+
+  // Once the feed is up, the welcome placeholder is redundant.
+  const w = $("welcome");
+  if (w) w.remove();
+}
+
+// The full expert tables (unchanged content) — shown only inside "nerd mode".
+// Selects are pre-rendered to their current selection; a delegated change
+// handler (setupFeed) updates the varga / BAV bodies and the node convention.
+function renderNerdPanel(c) {
   const rows = c.planets
     .map(
       p => `<tr>
@@ -561,11 +822,30 @@ function renderChartCard(c) {
     )
     .join("");
 
-  $("chartCard").hidden = false;
-  $("matchCard").hidden = false;
-  $("chartCard").innerHTML = `
-    ${renderCosmicId(c)}
-    <h3>Chart</h3>
+  // Divisional-chart selector, pre-rendered to the current varga
+  const divs = c.divisionals || [];
+  const vInit = divs.find(x => x.key === currentVarga) || divs[0];
+  if (vInit) currentVarga = vInit.key; // keep state in step with what's shown
+  const vsOptions = divs
+    .map(v => `<option value="${v.key}"${vInit && v.key === vInit.key ? " selected" : ""}>${v.key} · ${v.name}</option>`)
+    .join("");
+
+  // Ashtakavarga SAV table + BAV selector, pre-rendered to the current planet
+  const av = c.ashtakavarga || { targets: [], savByHouse: [], bav: {}, savTotal: 0 };
+  const bKey = av.targets.includes(currentBav) ? currentBav : (av.targets[0] || currentBav);
+  currentBav = bKey;
+  const bav = av.bav[bKey] || [];
+  const bsOptions = av.targets
+    .map(k => `<option value="${k}"${k === bKey ? " selected" : ""}>${k} BAV</option>`)
+    .join("");
+  const savRows = av.savByHouse
+    .map(h => {
+      const cls = h.bindus >= 30 ? "strong" : h.bindus <= 25 ? "weak" : "";
+      return `<tr class="${cls}"><td>${h.house}</td><td>${h.sign}</td><td>${h.bindus}</td><td>${bav[h.signIndex] ?? ""}</td></tr>`;
+    })
+    .join("");
+
+  return `
     <div class="asc">Lagna: <b>${c.ascendant.sign}</b> ${c.ascendant.degInSignFmt}
       · ${c.ascendant.nakshatra}</div>
     <table>
@@ -599,18 +879,18 @@ function renderChartCard(c) {
     </div>
     <div class="divisionals">
       <div class="aspects-title">Divisional charts
-        <select id="vargaSelect"></select>
+        <select id="vargaSelect">${vsOptions}</select>
       </div>
-      <div id="vargaBody"></div>
+      <div id="vargaBody">${vInit ? renderVargaHTML(vInit) : ""}</div>
     </div>
     <div class="ashtaka">
       <div class="aspects-title">Ashtakavarga
-        <select id="bavSelect"></select>
+        <select id="bavSelect">${bsOptions}</select>
       </div>
-      <div class="sav-note">Sarvashtakavarga · total ${c.ashtakavarga.savTotal} (avg ~28/house)</div>
+      <div class="sav-note">Sarvashtakavarga · total ${av.savTotal} (avg ~28/house)</div>
       <table>
-        <thead><tr><th>H</th><th>Sign</th><th>SAV</th><th id="bavHead">BAV</th></tr></thead>
-        <tbody id="savBody"></tbody>
+        <thead><tr><th>H</th><th>Sign</th><th>SAV</th><th id="bavHead">${bKey.slice(0, 3)} BAV</th></tr></thead>
+        <tbody id="savBody">${savRows}</tbody>
       </table>
     </div>
     <div class="transits">
@@ -629,56 +909,91 @@ function renderChartCard(c) {
           .join("")}</tbody>
       </table>
     </div>`;
+}
 
-  const shareBtn = $("cidShare");
-  if (shareBtn) shareBtn.addEventListener("click", () => shareCosmicId(c));
+// One-time delegated wiring for the feed. #feed is rebuilt on every cast, so we
+// bind on the stable container rather than on each generated button/select.
+function setupFeed() {
+  const feed = $("feed");
+  if (!feed) return;
 
-  const nt = $("nodeToggle");
-  if (nt) {
-    nt.addEventListener("change", () => {
-      nodeMode = nt.checked ? "jupiter" : "seventh";
+  feed.addEventListener("click", e => {
+    const cta = e.target.closest(".vibe-cta");
+    if (cta) return handleCta(cta.dataset.cta);
+    if (e.target.closest(".cid-share")) { if (chart) shareCosmicId(chart); return; }
+    const nt = e.target.closest(".nerd-toggle");
+    if (nt) {
+      nerdOpen = !nerdOpen;
+      const panel = feed.querySelector(".nerd-panel");
+      if (panel) panel.hidden = !nerdOpen;
+      nt.setAttribute("aria-expanded", nerdOpen ? "true" : "false");
+      const caret = nt.querySelector(".nerd-caret");
+      if (caret) caret.textContent = nerdOpen ? "▲" : "▼";
+    }
+  });
+
+  feed.addEventListener("change", e => {
+    const t = e.target;
+    if (t.id === "nodeToggle") {
+      nodeMode = t.checked ? "jupiter" : "seventh";
       if (lastInput) castChart(lastInput, false);
-    });
-  }
-
-  // Divisional-chart selector
-  const vs = $("vargaSelect");
-  if (vs && c.divisionals) {
-    vs.innerHTML = c.divisionals
-      .map(v => `<option value="${v.key}"${v.key === currentVarga ? " selected" : ""}>${v.key} · ${v.name}</option>`)
-      .join("");
-    const renderSel = () => {
-      currentVarga = vs.value;
-      const v = c.divisionals.find(x => x.key === currentVarga) || c.divisionals[0];
-      $("vargaBody").innerHTML = renderVargaHTML(v);
-    };
-    vs.addEventListener("change", renderSel);
-    renderSel();
-  }
-
-  // Ashtakavarga: SAV table + BAV planet selector
-  const bs = $("bavSelect");
-  if (bs && c.ashtakavarga) {
-    bs.innerHTML = c.ashtakavarga.targets
-      .map(k => `<option value="${k}"${k === currentBav ? " selected" : ""}>${k} BAV</option>`)
-      .join("");
-    const renderBav = () => {
-      currentBav = bs.value;
-      $("bavHead").textContent = `${currentBav.slice(0, 3)} BAV`;
-      const bav = c.ashtakavarga.bav[currentBav];
-      $("savBody").innerHTML = c.ashtakavarga.savByHouse
+      return;
+    }
+    if (!chart) return;
+    if (t.id === "vargaSelect") {
+      currentVarga = t.value;
+      const v = (chart.divisionals || []).find(x => x.key === currentVarga) || (chart.divisionals || [])[0];
+      const vb = $("vargaBody");
+      if (vb && v) vb.innerHTML = renderVargaHTML(v);
+    } else if (t.id === "bavSelect") {
+      currentBav = t.value;
+      const head = $("bavHead");
+      if (head) head.textContent = `${currentBav.slice(0, 3)} BAV`;
+      const av = chart.ashtakavarga || {};
+      const bav = (av.bav && av.bav[currentBav]) || [];
+      const body = $("savBody");
+      if (body) body.innerHTML = (av.savByHouse || [])
         .map(h => {
           const cls = h.bindus >= 30 ? "strong" : h.bindus <= 25 ? "weak" : "";
-          return `<tr class="${cls}"><td>${h.house}</td><td>${h.sign}</td><td>${h.bindus}</td><td>${bav[h.signIndex]}</td></tr>`;
+          return `<tr class="${cls}"><td>${h.house}</td><td>${h.sign}</td><td>${h.bindus}</td><td>${bav[h.signIndex] ?? ""}</td></tr>`;
         })
         .join("");
-    };
-    bs.addEventListener("change", renderBav);
-    renderBav();
-  }
-
-  renderDailyWeather(c);
+    }
+  });
 }
+
+// A feed card's "go deeper →" → a grounded question streamed into the chat.
+function handleCta(kind) {
+  if (!chart) return;
+  if (kind === "ship") return openShipCheck();
+  if (streaming) return;
+  const d = chart.dasha;
+  const tm = chart.transits && chart.transits.planets && chart.transits.planets.find(p => p.key === "Moon");
+  const prompts = {
+    today: tm
+      ? `What's my cosmic weather today? The transiting Moon is in ${tm.sign}, ${ordJS(tm.fromMoon)} from my natal Moon. How should I approach today, and anything to watch for?`
+      : "What's my cosmic weather today, and how should I approach it?",
+    era: d && d.maha
+      ? `I'm in my ${d.maha.lord} Mahadasha${d.antar ? " with " + d.antar.lord + " Antardasha" : ""} right now. In plain, friendly language, what does this era mean for my life, and how do I make the most of it?`
+      : "What life phase am I in right now, and what does it mean for me?",
+    power: "Break down my chart's strengths and lucky combinations (yogas) in plain, friendly language — what am I naturally good at, and how do I lean into it?",
+    heads: "What challenging placements or doshas are in my chart (and any current Sade Sati), and what simple, practical remedies suit me?"
+  };
+  const q = prompts[kind];
+  if (q) sendMessage(q);
+}
+
+// Reveal the Ship-check form (opens the sidebar drawer on mobile) and scroll to it.
+function openShipCheck() {
+  const card = $("matchCard");
+  if (!card) return;
+  setPanelOpen(true);
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  const first = $("m_dob");
+  if (first) setTimeout(() => first.focus({ preventScroll: true }), 320);
+}
+
+setupFeed();
 
 function ordJS(n) {
   const s = ["th", "st", "nd", "rd"];
@@ -692,6 +1007,7 @@ const matchErr = $("matchErr");
 const matchResult = $("matchResult");
 // Partner place field uses the same live geocoding as the main form.
 wireCityGeocode($("m_city"), $("m_cityList"), $("m_lat"), $("m_lon"), $("m_tz"));
+const revealMatchAdvanced = wireAdvanced("m_advToggle", "m_advFields");
 
 function showMatchErr(msg) {
   matchErr.textContent = msg;
@@ -705,7 +1021,17 @@ matchForm.addEventListener("submit", async e => {
 
   const dob = $("m_dob").value;
   const tob = $("m_tob").value || "12:00";
-  if (!dob) return showMatchErr("Enter the partner's date of birth.");
+  if (!dob) return showMatchErr("Enter their date of birth.");
+
+  if (coordsMissing($("m_lat"), $("m_lon"), $("m_tz"))) {
+    revealMatchAdvanced();
+    const located = [$("m_lat"), $("m_lon")].every(el => String(el.value).trim() !== "");
+    return showMatchErr(
+      located
+        ? "We couldn't work out the UTC offset for that place — please enter it below."
+        : "Pick their city from the list — or add coordinates manually below."
+    );
+  }
 
   const [year, month, day] = dob.split("-").map(Number);
   const [hour, minute] = tob.split(":").map(Number);
@@ -742,7 +1068,7 @@ matchForm.addEventListener("submit", async e => {
     matchResult.hidden = true;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Check compatibility";
+    btn.textContent = "check our vibe ♡";
   }
 });
 
@@ -796,18 +1122,38 @@ function renderMatchResult(d) {
         <div class="dosha-badges">${badges.join("")}</div>
       </div>
     </div>
-    <table class="kuta-table"><tbody>${kutaRows}</tbody></table>
-    ${manglikHtml}
-    ${caveats ? `<ul class="caveats">${caveats}</ul>` : ""}
-    <div class="match-note">Traditional minimum for marriage is ${d.verdict.minimum} of 36 gunas. Manglik is a separate layer, not part of the 36.</div>
     <div class="match-actions">
-      <button type="button" id="shipShareBtn" class="ship-share">Share this match ✦</button>
-      <button type="button" id="askMatchBtn" class="ask-match">Discuss in chat →</button>
+      <button type="button" id="shipShareBtn" class="ship-share">Share this ✦</button>
+      <button type="button" id="askMatchBtn" class="ask-match">Talk it through →</button>
+    </div>
+    <button type="button" class="breakdown-toggle" id="breakdownToggle" aria-expanded="false">
+      <span class="bd-label">see the breakdown</span><span class="bd-caret">▼</span>
+    </button>
+    <div class="ship-breakdown" id="shipBreakdown" hidden>
+      <table class="kuta-table"><tbody>${kutaRows}</tbody></table>
+      ${manglikHtml}
+      ${caveats ? `<ul class="caveats">${caveats}</ul>` : ""}
+      <div class="match-note">The traditional minimum for marriage is ${d.verdict.minimum} of 36 gunas (Guna Milan · Ashtakoot). Manglik is a separate layer, not part of the 36.</div>
     </div>`;
   matchResult.hidden = false;
 
   const shipBtn = $("shipShareBtn");
   if (shipBtn) shipBtn.addEventListener("click", () => shareMatch(d));
+
+  // "see the breakdown" reveals the full kuta table + Manglik panel.
+  const bdToggle = $("breakdownToggle");
+  const bd = $("shipBreakdown");
+  if (bdToggle && bd) {
+    bdToggle.addEventListener("click", () => {
+      const open = bd.hidden;
+      bd.hidden = !open;
+      bdToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      const caret = bdToggle.querySelector(".bd-caret");
+      if (caret) caret.textContent = open ? "▲" : "▼";
+      const label = bdToggle.querySelector(".bd-label");
+      if (label) label.textContent = open ? "hide the breakdown" : "see the breakdown";
+    });
+  }
 
   const askBtn = $("askMatchBtn");
   if (askBtn) {
@@ -1239,7 +1585,16 @@ function loadPerson(p) {
   $("lon").value = p.lon;
   $("tz").value = p.tz;
   $("city").value = "";
-  form.requestSubmit(); // re-cast through the normal flow (resets the consultation)
+  $("formErr").hidden = true;
+  releaseCoords(); // these coordinates are the saved person's, not a city pick
+  // Cast directly rather than via requestSubmit(): people saved as "Unnamed"
+  // leave the (required) name field empty, which would fail form validation.
+  lastInput = {
+    name: $("name").value.trim(),
+    year: p.year, month: p.month, day: p.day, hour: p.hour, minute: p.minute,
+    lat: p.lat, lon: p.lon, tz: p.tz
+  };
+  castChart(lastInput, true); // resets the consultation, same as a fresh submit
 }
 
 savePersonBtn.addEventListener("click", async () => {
